@@ -3,18 +3,7 @@ import fs from "fs-extra";
 import cron from "node-cron";
 import path from "path";
 import ora from "ora";
-
-// Mongo URIs
-const MONGO_URIS = [
-  {
-    uri: "mongodb+srv://projectDev-01:O9YGEyPQvKyA3Q48@kwintechinstances.usgwoxy.mongodb.net",
-    name: "db1",
-  },
-  {
-    uri: "mongodb+srv://projectDev-01:O9YGEyPQvKyA3Q48@kwintechinstances.usgwoxy.mongodb.net",
-    name: "db2",
-  },
-];
+import MONGO_URIS from "./mongo_uris.json" assert { type: "json" };
 
 const getFormattedTimestamp = () => {
   const now = new Date();
@@ -42,22 +31,23 @@ const log = (message) => {
 };
 
 // Backup a single database with spinner
-const backupDatabase = async ({ uri, name }) => {
+const backupDatabase = async ({ uri, name }, useSpinner = true) => {
   log(`Backing up ${name}...`);
 
   let seconds = 0;
-  const spinner = ora(`Exporting ${name}... 0s `).start();
+  let spinner;
+  let timer;
 
-  // Update spinner text every second
-  const timer = setInterval(() => {
-    seconds += 1;
-    spinner.text = `Exporting ${name}... ${seconds}s`;
-  }, 1000);
+  if (useSpinner) {
+    spinner = ora(`Exporting ${name}... 0s`).start();
+    timer = setInterval(() => {
+      seconds += 1;
+      spinner.text = `Exporting ${name}... ${seconds}s`;
+    }, 1000);
+  }
 
-  // const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
   const timestamp = getFormattedTimestamp();
-
-  const dbFolder = path.join(BACKUP_DIR, name); // backups/db1
+  const dbFolder = path.join(BACKUP_DIR, name);
   fs.ensureDirSync(dbFolder);
 
   const backupPath = path.join(dbFolder, `${name}_${timestamp}`);
@@ -69,53 +59,67 @@ const backupDatabase = async ({ uri, name }) => {
     const startTime = Date.now();
 
     exec(cmd, (error, stdout, stderr) => {
-      clearInterval(timer); // stop the counter
+      if (useSpinner) clearInterval(timer);
+
       const endTime = Date.now();
       const duration = ((endTime - startTime) / 1000).toFixed(2);
 
       if (error) {
-        spinner.fail(`Backup failed for ${name}`);
+        if (useSpinner) spinner.fail(`Backup failed for ${name}`);
         log(`Backup failed for ${name}: ${error.message} (took ${duration}s)`);
         return reject(error);
       }
 
-      spinner.succeed(`Backup completed for ${name} (${duration}s)`);
+      if (useSpinner)
+        spinner.succeed(`Backup completed for ${name} (${duration}s)`);
+
       log(`Backup completed for ${name}: ${backupPath} (took ${duration}s)`);
-      resolve();
+
+      // Return the DB name and duration for batch logging
+      resolve({ name, duration });
     });
   });
 };
 
-// Run all backups sequentially
-// const runBackups = async () => {
-//   log("Starting backup sequence...");
-//   for (const db of MONGO_URIS) {
-//     try {
-//       await backupDatabase(db);
-//     } catch (e) {
-//       log(`Error backing up ${db.name}: ${e.message}`);
-//     }
-//   }
-//   log("Backup sequence completed.\n");
-// };
 
 const runBackupsInBatches = async (batchSize = 2) => {
   log("Starting backup sequence...");
 
   for (let i = 0; i < MONGO_URIS.length; i += batchSize) {
-    const batch = MONGO_URIS.slice(i, i + batchSize); // get the current batch
+    const batch = MONGO_URIS.slice(i, i + batchSize);
     log(`Starting batch: ${batch.map((db) => db.name).join(", ")}`);
 
-    // Run the batch in parallel
-    await Promise.all(batch.map((db) => backupDatabase(db)));
+    let seconds = 0;
+    const spinner = ora(
+      `Exporting ${batch.map((db) => db.name).join(", ")}... 0s`
+    ).start();
+    const timer = setInterval(() => {
+      seconds += 1;
+      spinner.text = `Exporting ${batch
+        .map((db) => db.name)
+        .join(", ")}... ${seconds}s`;
+    }, 1000);
 
+    // Run batch in parallel but disable individual spinners
+    const results = await Promise.all(
+      batch.map((db) => backupDatabase(db, false))
+    );
+
+    clearInterval(timer);
+    spinner.succeed(`Finished batch: ${batch.map((db) => db.name).join(", ")}`);
     log(`Finished batch: ${batch.map((db) => db.name).join(", ")}\n`);
+
+    // Log duration for each DB in the batch
+    results.forEach((r) => {
+      log(`Duration for ${r.name}: ${r.duration}s`);
+    });
   }
 
   log("Backup sequence completed.\n");
 };
 
+
 log("Mongo backup service running...");
 runBackupsInBatches(2);
 // Schedule every hour
-cron.schedule("0 * * * *", runBackupsInBatches(2));
+cron.schedule("0 * * * *", () => runBackupsInBatches(2));
