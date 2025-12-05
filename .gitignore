@@ -1,4 +1,4 @@
 /backups
 /node_modules
 /mongo_uris.json
-backup.log
+/backup.log
