@@ -1,0 +1,20 @@
+{
+  "name": "mongo-backup-jobs",
+  "version": "1.0.0",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "child_process": "^1.0.2",
+    "fs-extra": "^11.3.2",
+    "node-cron": "^4.2.1",
+    "ora": "^9.0.0"
+  }
+}
