@@ -5,6 +5,8 @@ import path from "path";
 import ora from "ora";
 import MONGO_URIS from "./mongo_uris.json" assert { type: "json" };
 
+const CONCURRENT = 2
+
 const getFormattedTimestamp = () => {
   const now = new Date();
   const day = now.getDate().toString().padStart(2, "0");
@@ -120,6 +122,6 @@ const runBackupsInBatches = async (batchSize = 2) => {
 
 
 log("Mongo backup service running...");
-runBackupsInBatches(2);
+runBackupsInBatches(CONCURRENT);
 // Schedule every hour
-cron.schedule("0 * * * *", () => runBackupsInBatches(2));
+cron.schedule("0 * * * *", () => runBackupsInBatches(CONCURRENT));
