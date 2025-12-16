@@ -5,7 +5,7 @@ import path from "path";
 import ora from "ora";
 import MONGO_URIS from "./mongo_uris.json" assert { type: "json" };
 
-const CONCURRENT = 2
+const CONCURRENT = 2;
 
 const getFormattedTimestamp = () => {
   const now = new Date();
@@ -27,7 +27,16 @@ fs.ensureDirSync(BACKUP_DIR);
 // Create a write stream for logging
 const logStream = fs.createWriteStream(LOG_FILE, { flags: "a" });
 const log = (message) => {
-  const timestamp = new Date().toISOString();
+  const now = new Date();
+  const timestamp = `${now.getFullYear()}-${(now.getMonth() + 1)
+    .toString()
+    .padStart(2, "0")}-${now.getDate().toString().padStart(2, "0")} ${now
+    .getHours()
+    .toString()
+    .padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}:${now
+    .getSeconds()
+    .toString()
+    .padStart(2, "0")}`;;
   console.log(message); // still show in console
   logStream.write(`[${timestamp}] ${message}\n`);
 };
@@ -69,7 +78,7 @@ const backupDatabase = async ({ uri, name }, useSpinner = true) => {
       if (error) {
         if (useSpinner) spinner.fail(`Backup failed for ${name}`);
         log(`Backup failed for ${name}: ${error.message} (took ${duration}s)`);
-        return reject(error);
+        return reject({ error, duration });
       }
 
       if (useSpinner)
@@ -82,7 +91,6 @@ const backupDatabase = async ({ uri, name }, useSpinner = true) => {
     });
   });
 };
-
 
 const runBackupsInBatches = async (batchSize = 2) => {
   log("Starting backup sequence...");
@@ -104,22 +112,30 @@ const runBackupsInBatches = async (batchSize = 2) => {
 
     // Run batch in parallel but disable individual spinners
     const results = await Promise.all(
-      batch.map((db) => backupDatabase(db, false))
+      batch.map((db) =>
+        backupDatabase(db, false).catch(({ err, duration }) => {
+          // Return failed info instead of rejecting
+          return { name: db.name, duration, error: err };
+        })
+      )
     );
 
     clearInterval(timer);
     spinner.succeed(`Finished batch: ${batch.map((db) => db.name).join(", ")}`);
     log(`Finished batch: ${batch.map((db) => db.name).join(", ")}\n`);
 
-    // Log duration for each DB in the batch
+    // Log duration for each DB
     results.forEach((r) => {
-      log(`Duration for ${r.name}: ${r.duration}s`);
+      if (r.error) {
+        log(`Backup failed for ${r.name}: ${r.error}`);
+      } else {
+        log(`Duration for ${r.name}: ${r.duration}s`);
+      }
     });
   }
 
   log("Backup sequence completed.\n");
 };
-
 
 log("Mongo backup service running...");
 runBackupsInBatches(CONCURRENT);
