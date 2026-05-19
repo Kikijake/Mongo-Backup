@@ -2,16 +2,13 @@ import { exec } from "child_process";
 import fs from "fs-extra";
 import path from "path";
 import ora from "ora";
+import RESTORE_CONFIG from "../jsons/restore_config.json" assert { type: "json" };
 
 /**
  * CONFIG
- * Set these values before running.
+ * Loaded from restore_config.json
  */
-const MONGO_URI = "mongodb://127.0.0.1:27017"; // local or atlas
-const SOURCE_PATH =
-  "./backups/tun-tauk/tun-tauk_04-05-2026-T-09-52-26/tun-tauk"; // folder or file
-const DB_NAME = "tun-tauk"; // optional: force target DB name, leave "" to use source/default
-const DROP_BEFORE_RESTORE = true; // true = overwrite existing collections
+const { MONGO_URI, SOURCE_PATH, DB_NAME, DROP_BEFORE_RESTORE } = RESTORE_CONFIG;
 
 /**
  * HELPERS
@@ -43,8 +40,6 @@ const quote = (value) => `"${value}"`;
 
 /**
  * RESTORE MONGODUMP FOLDER
- * Example source:
- * ./backups/mydb/mydb_11-03-2026-T-10-00-00
  */
 const restoreDumpFolder = async (folderPath) => {
   const spinner = ora(`Restoring dump folder: ${folderPath}`).start();
@@ -76,7 +71,6 @@ const restoreDumpFolder = async (folderPath) => {
 
 /**
  * IMPORT SINGLE JSON / CSV FILE
- * JSON file should usually contain array of docs or newline JSON.
  */
 const importDataFile = async (filePath) => {
   const ext = path.extname(filePath).toLowerCase();
@@ -118,18 +112,31 @@ const importDataFile = async (filePath) => {
 };
 
 /**
- * AUTO-DETECT SOURCE TYPE
+ * AUTO-DETECT & RUN RESTORE
  */
-const run = async () => {
+export const runRestore = async () => {
   if (!MONGO_URI || MONGO_URI === "your-mongodb-uri-here") {
-    throw new Error("Please set a valid MONGO_URI");
+    throw new Error("Please set a valid MONGO_URI in restore_config.json");
   }
 
   if (!SOURCE_PATH) {
-    throw new Error("Please set SOURCE_PATH");
+    throw new Error("Please set SOURCE_PATH in restore_config.json");
   }
 
-  const fullPath = path.resolve(SOURCE_PATH);
+  let resolvedPath = SOURCE_PATH;
+  if (!path.isAbsolute(resolvedPath)) {
+    // Strip leading "./backups/", "backups/", or "./" if present to avoid duplicating
+    if (resolvedPath.startsWith("./backups/")) {
+      resolvedPath = resolvedPath.substring(10);
+    } else if (resolvedPath.startsWith("backups/")) {
+      resolvedPath = resolvedPath.substring(8);
+    } else if (resolvedPath.startsWith("./")) {
+      resolvedPath = resolvedPath.substring(2);
+    }
+    resolvedPath = path.resolve(process.cwd(), "backups", resolvedPath);
+  }
+
+  const fullPath = resolvedPath;
 
   if (!(await fs.pathExists(fullPath))) {
     throw new Error(`Path does not exist: ${fullPath}`);
@@ -138,7 +145,6 @@ const run = async () => {
   const stat = await fs.stat(fullPath);
 
   if (stat.isDirectory()) {
-    // folder from mongodump => use mongorestore
     await restoreDumpFolder(fullPath);
     return;
   }
@@ -167,7 +173,3 @@ const run = async () => {
 
   console.log("Unsupported path type.");
 };
-
-run().catch((err) => {
-  console.error("Error:", err.message);
-});
