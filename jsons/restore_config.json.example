@@ -1,0 +1,6 @@
+{
+  "MONGO_URI": "<your-mongodb-uri-here>",
+  "SOURCE_PATH": "<your-source-path-here>",
+  "DB_NAME": "<your-db-name-here>",
+  "DROP_BEFORE_RESTORE": true
+}

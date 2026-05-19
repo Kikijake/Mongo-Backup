@@ -1,0 +1,6 @@
+[
+  {
+    "uri": "mongodb://<your-username>:<your-password>@<your-host>:<your-port>/<your-db-name>",
+    "name": "<your-db-name>"
+  }
+]
