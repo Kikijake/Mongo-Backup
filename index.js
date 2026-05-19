@@ -140,4 +140,4 @@ const runBackupsInBatches = async (batchSize = 2) => {
 log("Mongo backup service running...");
 runBackupsInBatches(CONCURRENT);
 // Schedule every hour
-cron.schedule("0 * * * *", () => runBackupsInBatches(CONCURRENT));
+// cron.schedule("0 * * * *", () => runBackupsInBatches(CONCURRENT));
